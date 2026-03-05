@@ -133,6 +133,7 @@ def build_container(tag: str, arch: str, archive: str) -> None:
     FROM localhost/galaxy_ng:{tag}
 
     ADD {archive} /
+    ADD galaxy_ng.env /
 
     VOLUME /var/lib/postgresql/data
     VOLUME /artifacts
