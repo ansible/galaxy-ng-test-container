@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 # Copyright: Contributors to the Ansible project
 # GNU General Public License v3.0+ (see LICENSE or https://www.gnu.org/licenses/gpl-3.0.txt)
+# gha test
 
 import argparse
 import os
