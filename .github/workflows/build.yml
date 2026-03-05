@@ -58,6 +58,7 @@ jobs:
       - name: Build container
         id: build
         run: |
+          set -o pipefail
           python3 build.py galaxy_ng ${{ steps.determine-tag.outputs.tag }} | tee /dev/stderr >> $GITHUB_OUTPUT
 
       - name: Log in to GitHub Container Registry
