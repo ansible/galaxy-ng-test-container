@@ -109,7 +109,7 @@ def create_data_archive(tmpdir: str) -> str:
     archive = 'galaxy-archive.tar'
     print('Make volume tarball...', file=sys.stderr)
     docker_command(
-        ['exec', '-ti', alpine_id] + [
+        ['exec', alpine_id] + [
             'tar', '-cf', f'/{archive}',
             '/var/lib/pulp', '/etc/pulp/certs', '/var/lib/postgresql/data',
             '/artifacts',
