@@ -100,9 +100,6 @@ from multiprocessing import dummy as threading
 from multiprocessing import TimeoutError
 
 
-COLLECTIONS_BUILD_AND_PUBLISH_TIMEOUT = 300
-
-
 def publish_collection(module, collection):
     output_dir = module.params['output_dir']
 
@@ -260,6 +257,7 @@ def run_module():
         ),
         gpg_homedir=dict(type='path', default=None),
         output_dir=dict(type='path', default=None),
+        timeout=dict(type='int', default=300),
     )
 
     module = AnsibleModule(
@@ -275,7 +273,7 @@ def run_module():
     try:
         result['results'] = pool.map_async(
             publish_func, module.params['collections']
-        ).get(timeout=COLLECTIONS_BUILD_AND_PUBLISH_TIMEOUT)
+        ).get(timeout=module.params['timeout'])
     except TimeoutError as timeout_err:
         module.fail_json(
             'Timed out waiting for collections to be provisioned.',
