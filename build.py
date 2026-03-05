@@ -75,7 +75,12 @@ def run_compose(tag: str, src: str) -> None:
     dc_command(['up', '-d'], env=os.environ | {'TAG': tag, 'GALAXY_NG_SRC': src})
 
     print('Prepopulate galaxy...', file=sys.stderr)
-    dc_command(['wait', 'setup_collections'])
+    try:
+        dc_command(['wait', 'setup_collections'])
+    except subprocess.CalledProcessError:
+        print('Setup collections failed, dumping logs:', file=sys.stderr)
+        dc_command(['logs', 'setup_collections'], check=False)
+        raise
 
     print('Stop compose...', file=sys.stderr)
     dc_command(['stop'])
