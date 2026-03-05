@@ -330,6 +330,7 @@
         collections: '{{ primary_collections }}'
         gpg_homedir: '{{ gpg_homedir }}'
         output_dir: '{{ temp_root }}/primary_collections'
+        timeout: 500
       environment:
         ANSIBLE_CONFIG: '{{ playbook_dir }}/ansible.cfg'
       register: setup_collections
