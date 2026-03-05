@@ -1,0 +1,401 @@
+- hosts: localhost
+  gather_facts: false
+  vars:
+    temp_root: '{{ tmpdir.path }}'
+    gpg_homedir: "{{ temp_root }}/gpg"
+    shared_collections:
+      - namespace: namespace1
+        name: name1
+        version: 1.0.0
+      - namespace: namespace4
+        name: name
+
+    _primary_collections:
+      # Scenario to test out pre-release being ignored unless explicitly set and version pagination.
+      - namespace: namespace1
+        name: name1
+        version: 0.0.1
+      - namespace: namespace1
+        name: name1
+        version: 0.0.2
+      - namespace: namespace1
+        name: name1
+        version: 0.0.3
+      - namespace: namespace1
+        name: name1
+        version: 0.0.4
+      - namespace: namespace1
+        name: name1
+        version: 0.0.5
+      - namespace: namespace1
+        name: name1
+        version: 0.0.6
+      - namespace: namespace1
+        name: name1
+        version: 0.0.7
+      - namespace: namespace1
+        name: name1
+        version: 0.0.8
+      - namespace: namespace1
+        name: name1
+        version: 0.0.9
+      - namespace: namespace1
+        name: name1
+        version: 0.0.10
+      - namespace: namespace1
+        name: name1
+        version: 0.1.0
+      - namespace: namespace1
+        name: name1
+        version: 1.0.9
+      - namespace: namespace1
+        name: name1
+        version: 1.1.0-beta.1
+
+      # Pad out number of namespaces for pagination testing
+      - namespace: namespace2
+        name: name
+      - namespace: namespace3
+        name: name
+      - namespace: namespace5
+        name: name
+      - namespace: namespace6
+        name: name
+      - namespace: namespace7
+        name: name
+      - namespace: namespace8
+        name: name
+      - namespace: namespace9
+        name: name
+
+      # Complex dependency resolution
+      - namespace: parent_dep
+        name: parent_collection
+        version: 0.0.1
+        dependencies:
+          child_dep.child_collection: '<0.5.0'
+      - namespace: parent_dep
+        name: parent_collection
+        version: 1.0.0
+        dependencies:
+          child_dep.child_collection: '>=0.5.0,<1.0.0'
+      - namespace: parent_dep
+        name: parent_collection
+        version: 1.1.0
+        dependencies:
+          child_dep.child_collection: '>=0.9.9,<=1.0.0'
+      - namespace: parent_dep
+        name: parent_collection
+        version: 2.0.0
+        dependencies:
+          child_dep.child_collection: '>=1.0.0'
+      - namespace: parent_dep2
+        name: parent_collection
+        dependencies:
+          child_dep.child_collection: '0.5.0'
+      - namespace: child_dep
+        name: child_collection
+        version: 0.4.0
+      - namespace: child_dep
+        name: child_collection
+        version: 0.5.0
+      - namespace: child_dep
+        name: child_collection
+        version: 0.9.9
+        dependencies:
+          child_dep.child_dep2: '!=1.2.3'
+      - namespace: child_dep
+        name: child_collection
+        version: 1.0.0
+        dependencies:
+          child_dep.child_dep2: '!=1.2.3'
+      - namespace: child_dep
+        name: child_dep2
+        version: 1.2.2
+      - namespace: child_dep
+        name: child_dep2
+        version: 1.2.3
+
+      # Dep resolution failure
+      - namespace: fail_namespace
+        name: fail_collection
+        version: 2.1.2
+        dependencies:
+          fail_dep.name: '0.0.5'
+          fail_dep2.name: '<0.0.5'
+      - namespace: fail_dep
+        name: name
+        version: '0.0.5'
+        dependencies:
+          fail_dep2.name: '>0.0.5'
+      - namespace: fail_dep2
+        name: name
+
+      # Symlink tests
+      - namespace: symlink
+        name: symlink
+        use_symlink: yes
+
+      # Caching update tests
+      - namespace: cache
+        name: cache
+        version: 1.0.0
+
+      # Dep with beta version
+      - namespace: dep_with_beta
+        name: parent
+        dependencies:
+          namespace1.name1: '*'
+
+      # non-prerelease is published to test that installing
+      # the pre-release from SCM doesn't accidentally prefer indirect
+      # dependencies from Galaxy
+      - namespace: test_prereleases
+        name: collection2
+        version: 1.0.0
+
+      - namespace: dev_and_stables_ns
+        name: dev_and_stables_name
+        version: 1.2.3-dev0
+      - namespace: dev_and_stables_ns
+        name: dev_and_stables_name
+        version: 1.2.4
+
+      - namespace: ns_with_wildcard_dep
+        name: name_with_wildcard_dep
+        version: 5.6.7-beta.3
+        dependencies:
+          dev_and_stables_ns.dev_and_stables_name: >-
+            *
+      - namespace: ns_with_dev_dep
+        name: name_with_dev_dep
+        version: 6.7.8
+        dependencies:
+          dev_and_stables_ns.dev_and_stables_name: 1.2.3-dev0
+
+      - namespace: rc_meta_ns_with_transitive_dev_dep
+        name: rc_meta_name_with_transitive_dev_dep
+        version: 2.4.5-rc5
+        dependencies:
+          ns_with_dev_dep.name_with_dev_dep: >-
+            *
+      - namespace: meta_ns_with_transitive_wildcard_dep
+        name: meta_name_with_transitive_wildcard_dep
+        version: 4.5.6
+        dependencies:
+          ns_with_wildcard_dep.name_with_wildcard_dep: 5.6.7-beta.3
+
+      - namespace: ns_requires_ansible
+        name: name_requires_ansible
+        version: 1.0.0
+        runtime: |-
+          requires_ansible: "<1.1"
+
+      - namespace: ns_requires_ansible
+        name: dependency
+        version: 1.0.0
+
+      - namespace: ns_requires_ansible
+        name: dependency
+        version: 2.0.0
+        dependencies:
+          ns_requires_ansible.name_requires_ansible: 1.0.0
+
+      - namespace: ns_requires_ansible
+        name: dependency_incompat
+        version: 1.0.0
+        dependencies:
+          ns_requires_ansible.name_requires_ansible: 1.0.0
+
+      - namespace: ns_requires_ansible
+        name: dependency_incompat
+        version: 2.0.0
+        dependencies:
+          ns_requires_ansible.dependency: 2.0.0  # pinned incompatible version
+
+      - namespace: ns_requires_ansible
+        name: dependency_incompat
+        version: 3.0.0
+        dependencies:
+          ns_requires_ansible.name_requires_ansible: 1.0.0
+
+      - namespace: ns_requires_ansible
+        name: backtracking_error
+        version: 1.0.0
+        dependencies:
+          ns_requires_ansible.dependency_incompat: "*"
+
+    primary_collections: '{{ _primary_collections + shared_collections }}'
+
+    _secondary_collections:
+      - namespace: secondary
+        name: name
+        # parent_dep.parent_collection does not exist on the secondary server
+        dependencies:
+          parent_dep.parent_collection: '1.0.0'
+
+    secondary_collections: '{{ _secondary_collections + shared_collections }}'
+
+  tasks:
+    - name: create root temp dir
+      tempfile:
+        state: directory
+      register: tmpdir
+
+    - name: create empty temp dirs
+      file:
+        state: "{{ item.1 }}"
+        path: "{{ item.0 }}"
+        mode: 0700
+      loop: '{{ paths|product(states) }}'
+      vars:
+        paths:
+          - '{{ gpg_homedir }}'
+          - '{{ temp_root }}/primary_collections'
+          - '{{ temp_root }}/secondary_collections'
+        states:
+          - absent
+          - directory
+
+    - name: generate key for user with gpg
+      command: gpg --no-tty --homedir {{ gpg_homedir }} --passphrase '' --pinentry-mode loopback --quick-gen-key ansible-test default default
+      register: keygen
+
+    - name: export gpg public key
+      command: gpg --no-tty --homedir {{ gpg_homedir }} --armor --export ansible-test
+      register: pubkey
+
+    - name: generate revocation
+      command:
+        cmd: gpg --no-tty --command-fd 0 --homedir {{ gpg_homedir }} --gen-revoke {{ keygen.stdout_lines[1]|trim }}
+        stdin: "y\n0\n\ny\n"
+      register: revocation
+
+    - name: get pulp repository list
+      uri:
+        url: http://galaxy:8000/api/galaxy/pulp/api/v3/repositories/ansible/ansible/
+        user: admin
+        password: admin
+        force_basic_auth: true
+      register: pulp_repo_list
+      until: pulp_repo_list is success
+      retries: 60
+      delay: 1
+
+    - name: set correct gpg public key on pulp repository
+      uri:
+        url: http://galaxy:8000{{ published.pulp_href }}
+        user: admin
+        password: admin
+        force_basic_auth: true
+        method: PATCH
+        body_format: json
+        body:
+          gpgkey: '{{ pubkey.stdout }}'
+        status_code: 202
+      vars:
+        published: '{{ pulp_repo_list.json.results|selectattr("name", "eq", "published")|first }}'
+
+    - name: stash revocation on pulp rejected repository
+      uri:
+        url: http://galaxy:8000{{ rejected.pulp_href }}
+        user: admin
+        password: admin
+        force_basic_auth: true
+        method: PATCH
+        body_format: json
+        body:
+          gpgkey: '{{ revocation.stdout }}'
+        status_code: 202
+      vars:
+        rejected: '{{ pulp_repo_list.json.results|selectattr("name", "eq", "rejected")|first }}'
+
+    - name: create namespaces for test collections
+      uri:
+        url: http://galaxy:8000/api/galaxy/v3/namespaces/
+        method: POST
+        body_format: json
+        body:
+          groups: []
+          name: '{{ item }}'
+        status_code: 201
+        force_basic_auth: true
+        user: admin
+        password: admin
+      loop: '{{ primary_collections|map(attribute="namespace")|unique + ["ansible_test", "secondary"] }}'
+
+    - name: setup test collections
+      local.galaxy_ng.setup_collections:
+        server: galaxy_ng
+        collections: '{{ primary_collections }}'
+        gpg_homedir: '{{ gpg_homedir }}'
+        output_dir: '{{ temp_root }}/primary_collections'
+      environment:
+        ANSIBLE_CONFIG: '{{ playbook_dir }}/ansible.cfg'
+      register: setup_collections
+
+    - name: find pulp hrefs for collection versions
+      uri:
+        url: http://galaxy:8000/api/galaxy/v3/plugin/ansible/search/collection-versions/?{{ params|urlencode }}
+        user: admin
+        password: admin
+        force_basic_auth: true
+      register: pulp_data
+      loop: '{{ primary_collections }}'
+      loop_control:
+        label: "{{ item.namespace }}-{{ item.name }}-{{ item.version|default('1.0.0') }}"
+      vars:
+        params:
+          namespace: '{{ item.namespace }}'
+          name: '{{ item.name }}'
+          version: '{{ item.version|default("1.0.0") }}'
+
+    - name: upload test collection signatures
+      uri:
+        url: http://galaxy:8000/api/galaxy/pulp/api/v3/content/ansible/collection_signatures/
+        method: POST
+        user: admin
+        password: admin
+        force_basic_auth: true
+        body_format: form-multipart
+        body:
+          file:
+            filename: file
+            content: '{{ lookup("file", publish.gpg_detach_sign.signature_path) }}'
+            mime_type: text/plain
+          repository: '{{ pulp.repository.pulp_href }}'
+          signed_collection: '{{ pulp.collection_version.pulp_href }}'
+        status_code: 202
+      loop: '{{ setup_collections.results|zip(pulp_data.results) }}'
+      loop_control:
+        label: '{{ cv.namespace }}-{{ cv.name }}-{{ cv.version }} : {{ publish.gpg_detach_sign.signature_path|basename }}'
+      vars:
+        publish: '{{ item.0 }}'
+        pulp: '{{ item.1.json.data.0 }}'
+        cv: '{{ pulp.collection_version }}'
+      register: sig_publish
+
+    - name: wait for collection signature task to complete
+      uri:
+        url: http://galaxy:8000{{ sig_publish.results[-1].json.task }}
+        user: admin
+        password: admin
+        force_basic_auth: true
+      register: wait_sig_publish
+      until: wait_sig_publish is successful
+      retries: 60
+      delay: 1
+
+    - name: setup test collections for secondary
+      local.galaxy_ng.setup_collections:
+        server: amanda
+        collections: '{{ secondary_collections }}'
+        gpg_homedir: '{{ gpg_homedir }}'
+        output_dir: '{{ temp_root }}/secondary_collections'
+      environment:
+        ANSIBLE_CONFIG: '{{ playbook_dir }}/ansible.cfg'
+
+    - name: cleanup temp root
+      file:
+        state: absent
+        path: '{{ temp_root }}'

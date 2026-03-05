@@ -1,0 +1,112 @@
+name: Build Multi-Arch Container
+
+on:
+  push:
+    branches:
+      - main
+    tags:
+      - '*'
+  pull_request:
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE_NAME: ${{ github.repository }}
+  # galaxy.ansible.com 2025-12-05
+  GALAXY_NG_SHA: deaac62829e7cf3bc95590d0daebcadd5b7d2240
+
+jobs:
+  build:
+    runs-on: ${{ matrix.runner }}
+    strategy:
+      matrix:
+        include:
+          - runner: ubuntu-24.04
+          - runner: ubuntu-24.04-arm64
+
+    permissions:
+      contents: read
+      packages: write
+
+    outputs:
+      tag: ${{ steps.build.outputs.tag }}
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+
+      - name: Checkout galaxy_ng source
+        uses: actions/checkout@v4
+        with:
+          repository: ansible/galaxy_ng
+          ref: ${{ env.GALAXY_NG_SHA }}
+          path: galaxy_ng
+
+      - name: Determine tag
+        id: determine-tag
+        run: |
+          if [[ "${{ github.ref_type }}" == "tag" ]]; then
+            echo "tag=${{ github.ref_name }}" >> $GITHUB_OUTPUT
+          else
+            echo "tag=${{ github.sha }}" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Build container
+        id: build
+        run: |
+          python3 build.py galaxy_ng ${{ steps.determine-tag.outputs.tag }} | tee /dev/stderr >> $GITHUB_OUTPUT
+
+      - name: Log in to GitHub Container Registry
+        if: github.ref_type == 'tag'
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Tag and push arch-specific image
+        if: github.ref_type == 'tag'
+        run: |
+          LOCAL_TAG="galaxy-ng-test-container:${{ steps.build.outputs.tag }}-${{ steps.build.outputs.arch }}"
+          REMOTE_TAG="${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ steps.build.outputs.tag }}-${{ steps.build.outputs.arch }}"
+
+          docker tag "${LOCAL_TAG}" "${REMOTE_TAG}"
+          docker push "${REMOTE_TAG}"
+
+  manifest:
+    needs: build
+    runs-on: ubuntu-latest
+    if: github.ref_type == 'tag'
+
+    permissions:
+      contents: read
+      packages: write
+
+    steps:
+      - name: Log in to GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Create and push manifest
+        run: |
+          TAG="${{ needs.build.outputs.tag }}"
+          IMAGE_BASE="${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}"
+
+          # Create and push versioned manifest
+          docker manifest create "${IMAGE_BASE}:${TAG}" \
+            --amend "${IMAGE_BASE}:${TAG}-amd64" \
+            --amend "${IMAGE_BASE}:${TAG}-arm64"
+          docker manifest push "${IMAGE_BASE}:${TAG}"
+
+          # Create and push 'latest' manifest
+          docker manifest create "${IMAGE_BASE}:latest" \
+            --amend "${IMAGE_BASE}:${TAG}-amd64" \
+            --amend "${IMAGE_BASE}:${TAG}-arm64"
+          docker manifest push "${IMAGE_BASE}:latest"

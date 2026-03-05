@@ -1,0 +1,120 @@
+services:
+  galaxy_ng_image_upstream:
+    build:
+      context: ${GALAXY_NG_SRC:-galaxy_ng}
+      dockerfile: Dockerfile
+      args:
+        USER_ID: ${USER_ID:-1000}
+    env_file: galaxy_ng.env
+
+  galaxy_ng_image:
+    # various places in galaxy/pulp depend on pkg_resources
+    # but no pin exists, and setuptools 82 removed pkg_resources
+    build:
+      context: .
+      dockerfile_inline: |
+        FROM galaxy_ng_image_upstream
+        USER ${USER_ID:-1000}
+        RUN /venv/bin/python3 -m pip install 'setuptools<82'
+      args:
+        USER_ID: ${USER_ID:-1000}
+      additional_contexts:
+        galaxy_ng_image_upstream: service:galaxy_ng_image_upstream
+    image: localhost/galaxy_ng:${TAG:-latest}
+
+  postgres:
+    image: postgres:13
+    env_file: galaxy_ng.env
+    healthcheck:
+      test:
+        - CMD
+        - pg_isready
+        - -U
+        - galaxy_ng
+      interval: 10s
+      retries: 5
+    volumes:
+      - pg_data:/var/lib/postgresql/data
+
+  prepare:
+    image: localhost/galaxy_ng:${TAG:-latest}
+    env_file: galaxy_ng.env
+    volumes:
+      - etc_pulp_certs:/etc/pulp/certs
+    user: root
+    command: |
+      /bin/sh -c '
+        set -e;
+
+        head -c 32 /dev/urandom | base64 > /etc/pulp/certs/database_fields.symmetric.key;
+
+        pulpcore-manager check --database default;
+        pulpcore-manager migrate;
+        pulpcore-manager createsuperuser --noinput || true;
+
+        chown -R galaxy:galaxy /etc/pulp /var/lib/pulp;
+      '
+    depends_on:
+      galaxy_ng_image:
+        condition: service_completed_successfully
+
+  galaxy:
+    image: localhost/galaxy_ng:${TAG:-latest}
+    env_file: galaxy_ng.env
+    volumes:
+      - etc_pulp_certs:/etc/pulp/certs
+      - var_lib_pulp:/var/lib/pulp
+    ports:
+      - 8000:8000
+      - 24816:24816
+    user: galaxy
+    command: |
+      /bin/sh -c '
+        set -e;
+        (start-api &); (start-content-app &); start-worker;
+      '
+    healthcheck:
+      test: readyz.py $${PULP_GALAXY_API_PATH_PREFIX}pulp/api/v3/status/
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    depends_on:
+      prepare:
+        condition: service_completed_successfully
+      postgres:
+        condition: service_healthy
+
+  amanda:
+    image: ghcr.io/sivel/amanda:latest
+    volumes:
+      - artifacts:/artifacts
+    ports:
+      - 8001:8001
+    command: -port 8001 -publish
+
+  setup_collections:
+    image: alpine:latest
+    volumes:
+      - type: bind
+        source: playbooks
+        target: /playbooks
+    working_dir: /playbooks
+    depends_on:
+      galaxy:
+        condition: service_healthy
+    command: |
+      /bin/sh -c '
+        set -e;
+        apk add --no-cache ansible-core gpg gpg-agent;
+        ansible-playbook -v playbook.yml;
+      '
+
+volumes:
+  var_lib_pulp:
+    name: var_lib_pulp
+  etc_pulp_certs:
+    name: etc_pulp_certs
+  pg_data:
+    name: pg_data
+  artifacts:
+    name: artifacts
