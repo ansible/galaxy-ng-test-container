@@ -23,7 +23,7 @@ services:
     image: localhost/galaxy_ng:${TAG:-latest}
 
   postgres:
-    image: postgres:13
+    image: quay.io/lib/postgres:13
     env_file: galaxy_ng.env
     healthcheck:
       test:
@@ -93,7 +93,7 @@ services:
     command: -port 8001 -publish
 
   setup_collections:
-    image: alpine:latest
+    image: quay.io/lib/alpine:latest
     volumes:
       - type: bind
         source: playbooks
